@@ -80,8 +80,8 @@ export default function App() {
     const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
     if (data) setProfile(data)
     else {
-      const fallback = (user.email?.split('@')[0] || 'kimi_user').replace(/[^a-zA-Z0-9_]/g, '').slice(0, 20) || 'kimi_user'
-      const { data: created } = await supabase.from('profiles').insert({ id: user.id, username: fallback + '_' + user.id.slice(0, 4), display_name: user.user_metadata?.display_name || fallback }).select().single()
+      const fallback = (user.user_metadata?.username || user.email?.split('@')[0] || 'kimi_user').replace(/[^a-zA-Z0-9_]/g, '').slice(0, 20) || 'kimi_user'
+      const { data: created } = await supabase.from('profiles').upsert({ id: user.id, username: fallback + (user.user_metadata?.username ? '' : '_' + user.id.slice(0, 4)), display_name: user.user_metadata?.display_name || fallback }, { onConflict: 'id' }).select().single()
       if (created) setProfile(created)
     }
   }
@@ -104,10 +104,10 @@ export default function App() {
     try {
       if (authMode === 'signup') {
         if (!/^[a-zA-Z0-9_]{3,24}$/.test(username)) throw new Error('نام کاربری باید ۳ تا ۲۴ حرف انگلیسی، عدد یا _ باشد.')
-        const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName || username } } })
+        const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { username, display_name: displayName || username } } })
         if (error) throw error
         if (data.user && data.session) {
-          const { error: pError } = await supabase.from('profiles').insert({ id: data.user.id, username, display_name: displayName || username })
+          const { error: pError } = await supabase.from('profiles').upsert({ id: data.user.id, username, display_name: displayName || username }, { onConflict: 'id' })
           if (pError) throw pError
         } else setAuthError('برای فعال‌سازی حساب، ایمیل تأیید را بررسی کن.')
       } else {
