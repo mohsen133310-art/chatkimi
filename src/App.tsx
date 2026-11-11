@@ -21,6 +21,7 @@ export default function App() {
   const [authError, setAuthError] = useState('')
   const [busy, setBusy] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [onlineUserIds, setOnlineUserIds] = useState<string[]>([])
   const [selected, setSelected] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [draft, setDraft] = useState('')
@@ -39,6 +40,23 @@ export default function App() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null))
     return () => listener.subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    if (!user) { setOnlineUserIds([]); return }
+    const channel = supabase.channel('kimi:online', {
+      config: { private: true, presence: { key: user.id } },
+    })
+    channel.on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState()
+      const ids = Object.values(state).flatMap((items: any[]) => items.map(item => item.user_id as string))
+      setOnlineUserIds([...new Set(ids)])
+    }).subscribe(status => {
+      if (status === 'SUBSCRIBED') {
+        void channel.track({ user_id: user.id, online_at: new Date().toISOString() })
+      }
+    })
+    return () => { void supabase.removeChannel(channel) }
+  }, [user?.id])
 
   useEffect(() => {
     if (!user) { setProfile(null); setConversations([]); setSelected(null); return }
@@ -187,7 +205,7 @@ export default function App() {
     </aside>
     <section className={'chat-panel ' + (!selected ? 'mobile-hidden' : '')}>
       {selected ? <>
-        <header className="chat-header"><button className="icon-button back-button" onClick={() => setSelected(null)}><ArrowRight/></button><div className="avatar chat-avatar">{selected.is_group ? <Users size={19}/> : (selected.title || 'K')[0]}</div><div className="chat-title"><b>{selected.title || 'گفت‌وگو'}</b><span>گفت‌وگوی Kimi</span></div></header>
+        <header className="chat-header"><button className="icon-button back-button" onClick={() => setSelected(null)}><ArrowRight/></button><div className="avatar chat-avatar">{selected.is_group ? <Users size={19}/> : (selected.title || 'K')[0]}</div><div className="chat-title"><b>{selected.title || 'گفت‌وگو'}</b><span>{onlineUserIds.length ? onlineUserIds.length + ' نفر آنلاین' : 'گفت‌وگوی Kimi'}</span></div></header>
         <div className="messages-area">{messages.map(m => <MessageBubble key={m.id} message={m} mine={m.sender_id === user.id} getUrl={attachmentUrl} />)}{!messages.length && <div className="welcome-chat"><div className="brand-mark"><MessageCircle size={26}/></div><b>گفت‌وگو را شروع کن</b><span>اولین پیام را برای این گفتگو بفرست.</span></div>}<div ref={bottomRef}/></div>
         <form className="composer" onSubmit={sendMessage}><label className="attach-button" title="ارسال فایل"><Paperclip size={20}/><input type="file" hidden onChange={e => uploadFile(e.target.files?.[0])}/></label><label className="attach-button image-attach" title="ارسال تصویر"><ImageIcon size={20}/><input type="file" accept="image/*" hidden onChange={e => uploadFile(e.target.files?.[0])}/></label><input value={draft} onChange={e => setDraft(e.target.value)} placeholder="پیامت را بنویس…" /><button className="send-button" disabled={!draft.trim()}><Send size={19}/></button></form>
       </> : <div className="welcome-screen"><div className="welcome-art"><MessageCircle size={52}/></div><h2>به Kimi خوش آمدی</h2><p>یک گفت‌وگو انتخاب کن یا پیام جدیدی شروع کن.</p><button className="primary" onClick={() => setShowNew(true)}><Plus size={18}/> شروع گفت‌وگوی جدید</button></div>}
