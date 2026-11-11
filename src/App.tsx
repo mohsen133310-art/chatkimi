@@ -15,12 +15,10 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login')
-  const [authMethod, setAuthMethod] = useState<'email' | 'phone'>('phone')
   const [phone, setPhone] = useState('')
   const [otp, setOtp] = useState('')
   const [otpSent, setOtpSent] = useState(false)
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [authError, setAuthError] = useState('')
@@ -104,50 +102,50 @@ export default function App() {
     setMessages(data || [])
   }
 
-  async function requestPhoneOtp(e: FormEvent) {
-    e.preventDefault(); setBusy(true); setAuthError('')
-    try {
-      const normalized = phone.trim().replace(/[\\s()-]/g, '')
-      if (!/^\\+989\\d{9}$/.test(normalized)) throw new Error('شماره را با فرمت +989xxxxxxxxx وارد کن.')
-      if (authMode === 'signup' && !/^[a-zA-Z0-9_]{3,24}$/.test(username)) throw new Error('نام کاربری باید ۳ تا ۲۴ حرف انگلیسی، عدد یا _ باشد.')
-      const { error } = await supabase.auth.signInWithOtp({ phone: normalized, options: { shouldCreateUser: authMode === 'signup', data: authMode === 'signup' ? { username, display_name: displayName || username } : undefined } })
-      if (error) throw error
-      setOtpSent(true); setAuthError('کد تأیید درخواست شد. در صورت فعال بودن سرویس پیامکی، آن را دریافت می‌کنی.')
-    } catch (err) { setAuthError(err instanceof Error ? err.message : 'ارسال کد ناموفق بود.') }
-    finally { setBusy(false) }
-  }
-
-  async function verifyPhoneOtp(e: FormEvent) {
-    e.preventDefault(); setBusy(true); setAuthError('')
-    try {
-      const normalized = phone.trim().replace(/[\\s()-]/g, '')
-      const { data, error } = await supabase.auth.verifyOtp({ phone: normalized, token: otp.trim(), type: 'sms' })
-      if (error) throw error
-      if (data.user && authMode === 'signup') {
-        const cleanUsername = username.trim()
-        const { error: profileError } = await supabase.from('profiles').upsert({ id: data.user.id, username: cleanUsername, display_name: displayName.trim() || cleanUsername }, { onConflict: 'id' })
-        if (profileError) throw profileError
-      }
-    } catch (err) { setAuthError(err instanceof Error ? err.message : 'کد تأیید نامعتبر است.') }
-    finally { setBusy(false) }
+  function cleanUsername(value: string) {
+    return value.trim().replace(/^@/, '').toLowerCase()
   }
 
   async function authenticate(e: FormEvent) {
     e.preventDefault(); setBusy(true); setAuthError('')
     try {
+      const cleanEmail = email.trim().toLowerCase()
+      const cleanPhone = phone.trim()
       if (authMode === 'signup') {
-        if (!/^[a-zA-Z0-9_]{3,24}$/.test(username)) throw new Error('نام کاربری باید ۳ تا ۲۴ حرف انگلیسی، عدد یا _ باشد.')
-        const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { username, display_name: displayName || username } } })
+        const clean = cleanUsername(username)
+        if (!/^[a-z0-9_]{3,24}$/.test(clean)) throw new Error('نام کاربری باید با @ شروع شود و ۳ تا ۲۴ حرف انگلیسی کوچک، عدد یا _ داشته باشد؛ مثل @kkkkk.')
+        if (!/^\\+?[0-9]{8,15}$/.test(cleanPhone.replace(/[\\s()-]/g, ''))) throw new Error('شماره موبایل را با کد کشور وارد کن.')
+        const { error } = await supabase.auth.signInWithOtp({
+          email: cleanEmail,
+          options: { shouldCreateUser: true, data: { username: clean, display_name: displayName.trim() || clean, phone: cleanPhone } }
+        })
         if (error) throw error
-        if (data.user && data.session) {
-          const { error: pError } = await supabase.from('profiles').upsert({ id: data.user.id, username, display_name: displayName || username }, { onConflict: 'id' })
-          if (pError) throw pError
-        } else setAuthError('برای فعال‌سازی حساب، ایمیل تأیید را بررسی کن.')
+        setUsername(clean)
+        setOtpSent(true)
+        setAuthError('کد ۶ رقمی به ایمیلت فرستاده شد. صندوق ورودی و پوشه هرزنامه را بررسی کن.')
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        const { error } = await supabase.auth.signInWithOtp({ email: cleanEmail, options: { shouldCreateUser: false } })
         if (error) throw error
+        setOtpSent(true)
+        setAuthError('کد ورود ۶ رقمی به ایمیلت فرستاده شد.')
       }
-    } catch (err) { setAuthError(err instanceof Error ? err.message : 'خطا در ورود') }
+    } catch (err) { setAuthError(err instanceof Error ? err.message : 'ارسال کد ایمیل ناموفق بود.') }
+    finally { setBusy(false) }
+  }
+
+  async function verifyEmailOtp(e: FormEvent) {
+    e.preventDefault(); setBusy(true); setAuthError('')
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({ email: email.trim().toLowerCase(), token: otp.trim(), type: 'email' })
+      if (error) throw error
+      if (data.user && authMode === 'signup') {
+        const clean = cleanUsername(username)
+        const { error: profileError } = await supabase.from('profiles').upsert({
+          id: data.user.id, username: clean, display_name: displayName.trim() || clean, email_visible: false
+        }, { onConflict: 'id' })
+        if (profileError) throw profileError
+      }
+    } catch (err) { setAuthError(err instanceof Error ? err.message : 'کد تأیید نامعتبر است.') }
     finally { setBusy(false) }
   }
 
@@ -222,21 +220,18 @@ export default function App() {
 
   if (!user) return <main className="auth-page"><section className="auth-card"><div className="brand-mark"><MessageCircle size={30} /></div><h1>Kimi</h1><p className="muted">پیام‌هایت، نزدیک‌تر از همیشه</p>
     <div className="mode-tabs"><button type="button" className={authMode === "login" ? "chosen" : ""} onClick={() => { setAuthMode("login"); setOtpSent(false); setOtp(""); setAuthError("") }}>ورود</button><button type="button" className={authMode === "signup" ? "chosen" : ""} onClick={() => { setAuthMode("signup"); setOtpSent(false); setOtp(""); setAuthError("") }}>ثبت‌نام</button></div>
-    <div className="mode-tabs"><button type="button" className={authMethod === "phone" ? "chosen" : ""} onClick={() => { setAuthMethod("phone"); setOtpSent(false); setAuthError("") }}>شماره موبایل</button><button type="button" className={authMethod === "email" ? "chosen" : ""} onClick={() => { setAuthMethod("email"); setOtpSent(false); setAuthError("") }}>ایمیل</button></div>
-    {authMethod === "phone" ? <form onSubmit={otpSent ? verifyPhoneOtp : requestPhoneOtp}>
-      {authMode === "signup" && <><label>نام نمایشی<input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="مثلاً محسن" /></label><label>نام کاربری<input value={username} onChange={e => setUsername(e.target.value)} placeholder="mohsen_23" required /></label></>}
-      <label>شماره موبایل<input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+989121234567" required disabled={otpSent} /></label>
-      {otpSent && <label>کد تأیید پیامکی<input inputMode="numeric" autoComplete="one-time-code" value={otp} onChange={e => setOtp(e.target.value)} placeholder="کد ۶ رقمی" minLength={6} maxLength={6} required /></label>}
+    <form onSubmit={otpSent ? verifyEmailOtp : authenticate}>
+      {authMode === "signup" && <>
+        <label>نام نمایشی<input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="مثلاً محسن" /></label>
+        <label>نام کاربری<input value={username} onChange={e => setUsername(e.target.value)} placeholder="@kkkkk" required disabled={otpSent} /></label>
+        <label>شماره موبایل<input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+989121234567" required disabled={otpSent} /></label>
+      </>}
+      <label>ایمیل<input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="name@example.com" required disabled={otpSent} /></label>
+      {otpSent && <label>کد تأیید ایمیل<input inputMode="numeric" autoComplete="one-time-code" value={otp} onChange={e => setOtp(e.target.value)} placeholder="کد ۶ رقمی" minLength={6} maxLength={6} required /></label>}
       {authError && <p className="error">{authError}</p>}
-      <button className="primary full" disabled={busy || (otpSent && otp.trim().length !== 6)}>{busy ? "لطفاً صبر کن…" : otpSent ? "تأیید و ورود" : "ارسال کد تأیید"}</button>
-      {otpSent && <button type="button" className="link-button" onClick={() => { setOtpSent(false); setOtp(""); setAuthError("") }}>تغییر شماره / ارسال دوباره کد</button>}
-    </form> : <form onSubmit={authenticate}>
-      {authMode === "signup" && <><label>نام نمایشی<input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="مثلاً محسن" /></label><label>نام کاربری<input value={username} onChange={e => setUsername(e.target.value)} placeholder="mohsen_23" required /></label></>}
-      <label>ایمیل<input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="name@example.com" required /></label>
-      <label>رمز عبور<input type="password" value={password} onChange={e => setPassword(e.target.value)} minLength={6} required placeholder="حداقل ۶ کاراکتر" /></label>
-      {authError && <p className="error">{authError}</p>}
-      <button className="primary full" disabled={busy}>{busy ? "لطفاً صبر کن…" : authMode === "login" ? "ورود با ایمیل" : "ساخت حساب با ایمیل"}</button>
-    </form>}
+      <button className="primary full" disabled={busy || (otpSent && otp.trim().length !== 6)}>{busy ? "لطفاً صبر کن…" : otpSent ? "تأیید کد و ورود" : authMode === "login" ? "ارسال کد ورود به ایمیل" : "ارسال کد ثبت‌نام"}</button>
+      {otpSent && <button type="button" className="link-button" onClick={() => { setOtpSent(false); setOtp(""); setAuthError("") }}>بازگشت و تغییر اطلاعات</button>}
+    </form>
     <p className="tiny">ورود با ایمیل برای کاربران قبلی هم در دسترس است.</p></section></main>
 
   return <main className="app-shell">
