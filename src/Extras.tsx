@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { Search, Users, Bot, Globe, X, Plus, Copy, ExternalLink, ArrowUpRight, UserPlus, Terminal, ShieldCheck } from 'lucide-react'
 
