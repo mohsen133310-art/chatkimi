@@ -115,7 +115,7 @@ export default function App() {
       if (authMode === 'signup') {
         const clean = cleanUsername(username)
         if (!/^[a-z0-9_]{3,24}$/.test(clean)) throw new Error('نام کاربری باید با @ شروع شود و ۳ تا ۲۴ حرف انگلیسی کوچک، عدد یا _ داشته باشد؛ مثل @kkkkk.')
-        if (!/^\\+?[0-9]{8,15}$/.test(cleanPhone.replace(/[\\s()-]/g, ''))) throw new Error('شماره موبایل را با کد کشور وارد کن.')
+        if (!/^\+?[0-9]{8,15}$/.test(cleanPhone.replace(/[\s()-]/g, ''))) throw new Error('شماره موبایل را با کد کشور وارد کن.')
         const { error } = await supabase.auth.signInWithOtp({
           email: cleanEmail,
           options: { shouldCreateUser: true, data: { username: clean, display_name: displayName.trim() || clean, phone: cleanPhone } }
