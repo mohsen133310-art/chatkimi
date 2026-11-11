@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createClient, type User } from '@supabase/supabase-js'
-import { MessageCircle, Search, Plus, Send, Paperclip, Image as ImageIcon, LogOut, Users, ArrowRight, X, CheckCheck } from 'lucide-react'
+import { MessageCircle, Search, Plus, Send, Paperclip, Image as ImageIcon, LogOut, Users, ArrowRight, X, CheckCheck, Settings } from 'lucide-react'
 import Extras from './Extras'
 
 const SUPABASE_URL = 'https://gegkwtxpygtfzyhnnrgv.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_fyidvtGSXVDcZS5U5BQbSg_t_8FYYNO'
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
-type Profile = { id: string; username: string; display_name: string; avatar_url: string | null }
+type Profile = { id: string; username: string; display_name: string; avatar_url: string | null; email_visible: boolean }
 type Conversation = { id: string; title: string | null; is_group: boolean; created_at: string }
 type Message = { id: string; conversation_id: string; sender_id: string; body: string; attachment_path: string | null; attachment_name: string | null; created_at: string }
 
@@ -34,6 +34,7 @@ export default function App() {
   const [groupTitle, setGroupTitle] = useState('')
   const [groupUsers, setGroupUsers] = useState('')
   const [showNew, setShowNew] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [notice, setNotice] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const filtered = useMemo(() => conversations.filter(c => (c.title || 'گفت‌وگوی خصوصی').toLowerCase().includes(search.toLowerCase())), [conversations, search])
@@ -149,11 +150,19 @@ export default function App() {
     finally { setBusy(false) }
   }
 
+  async function toggleEmailVisibility(visible: boolean) {
+    if (!user) return
+    const { error } = await supabase.from('profiles').update({ email_visible: visible }).eq('id', user.id)
+    if (error) { setNotice(error.message); return }
+    setProfile(current => current ? { ...current, email_visible: visible } : current)
+  }
+
   async function createDirect(e: FormEvent) {
     e.preventDefault(); if (!user || !newUsername.trim()) return
     setBusy(true); setNotice('')
     try {
-      const { data: target, error: findError } = await supabase.from('profiles').select('id, username, display_name').eq('username', newUsername.trim()).single()
+      const targetUsername = cleanUsername(newUsername)
+      const { data: target, error: findError } = await supabase.from('profiles').select('id, username, display_name').eq('username', targetUsername).single()
       if (findError || !target) throw new Error('این نام کاربری پیدا نشد.')
       if (target.id === user.id) throw new Error('نمی‌توانی با خودت گفت‌وگو بسازی.')
       const { data: existing } = await supabase.from('conversation_members').select('conversation_id').eq('user_id', user.id)
@@ -176,7 +185,7 @@ export default function App() {
 
   async function createGroup(e: FormEvent) {
     e.preventDefault(); if (!user || !groupTitle.trim()) return
-    const names = [...new Set(groupUsers.split(',').map(x => x.trim()).filter(Boolean))]
+    const names = [...new Set(groupUsers.split(',').map(cleanUsername).filter(Boolean))]
     if (!names.length) { setNotice('حداقل یک عضو وارد کن.'); return }
     setBusy(true); setNotice('')
     try {
@@ -237,7 +246,7 @@ export default function App() {
   return <main className="app-shell">
     <aside className={'sidebar ' + (selected ? 'mobile-hidden' : '')}>
       <header className="side-header"><div className="brand"><span className="brand-mark small"><MessageCircle size={20}/></span><b>Kimi</b></div><button className="icon-button" title="گفت‌وگوی جدید" onClick={() => setShowNew(true)}><Plus/></button></header>
-      <div className="profile-strip"><div className="avatar">{(profile?.display_name || user.email || 'K')[0].toUpperCase()}</div><div className="profile-info"><b>{profile?.display_name || 'کاربر Kimi'}</b><span>@{profile?.username || '...'}</span></div><button className="icon-button subtle" title="خروج" onClick={logout}><LogOut size={18}/></button></div>
+      <div className="profile-strip"><div className="avatar">{(profile?.display_name || user.email || 'K')[0].toUpperCase()}</div><div className="profile-info"><b>{profile?.display_name || 'کاربر Kimi'}</b><span>@{profile?.username || '...'}</span></div><button className="icon-button subtle" title="تنظیمات حریم خصوصی" onClick={() => setShowSettings(true)}><Settings size={18}/></button><button className="icon-button subtle" title="خروج" onClick={logout}><LogOut size={18}/></button></div>
       <div className="search-box"><Search size={18}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="جست‌وجوی گفتگوها" /></div>\n      <Extras userId={user.id} onStartChat={(name) => { setNewUsername(name); setGroupMode(false); setShowNew(true) }} />
       <div className="list-heading">پیام‌ها <span>{conversations.length}</span></div>
       <div className="conversation-list">{filtered.map(c => <button key={c.id} className={'conversation ' + (selected?.id === c.id ? 'active' : '')} onClick={() => setSelected(c)}><div className="avatar chat-avatar">{c.is_group ? <Users size={19}/> : (c.title || 'K')[0]}</div><div className="conversation-meta"><b>{c.title || 'گفت‌وگوی خصوصی'}</b><span>{c.is_group ? 'گروه' : 'گفت‌وگوی خصوصی'}</span></div></button>)}{!filtered.length && <div className="empty-list">هنوز گفت‌وگویی نداری.<br/>برای شروع روی + بزن.</div>}</div>
@@ -249,6 +258,7 @@ export default function App() {
         <form className="composer" onSubmit={sendMessage}><label className="attach-button" title="ارسال فایل"><Paperclip size={20}/><input type="file" hidden onChange={e => uploadFile(e.target.files?.[0])}/></label><label className="attach-button image-attach" title="ارسال تصویر"><ImageIcon size={20}/><input type="file" accept="image/*" hidden onChange={e => uploadFile(e.target.files?.[0])}/></label><input value={draft} onChange={e => setDraft(e.target.value)} placeholder="پیامت را بنویس…" /><button className="send-button" disabled={!draft.trim()}><Send size={19}/></button></form>
       </> : <div className="welcome-screen"><div className="welcome-art"><MessageCircle size={52}/></div><h2>به Kimi خوش آمدی</h2><p>یک گفت‌وگو انتخاب کن یا پیام جدیدی شروع کن.</p><button className="primary" onClick={() => setShowNew(true)}><Plus size={18}/> شروع گفت‌وگوی جدید</button></div>}
     </section>
+    {showSettings && <div className="modal-backdrop" onClick={() => setShowSettings(false)}><section className="modal" onClick={e => e.stopPropagation()}><div className="modal-head"><b>تنظیمات حریم خصوصی</b><button type="button" className="icon-button" onClick={() => setShowSettings(false)}><X/></button></div><label className="privacy-toggle"><input type="checkbox" checked={!!profile?.email_visible} onChange={e => void toggleEmailVisibility(e.target.checked)} /> نمایش ایمیل برای دیگر کاربران</label><p className="muted">ایمیل به‌صورت پیش‌فرض خصوصی است. فقط با روشن‌کردن این گزینه اجازه نمایش آن را می‌دهی.</p></section></div>}
     {showNew && <div className="modal-backdrop" onClick={() => setShowNew(false)}><form className="modal" onSubmit={groupMode ? createGroup : createDirect} onClick={e => e.stopPropagation()}><div className="modal-head"><b>گفت‌وگوی جدید</b><button type="button" className="icon-button" onClick={() => setShowNew(false)}><X/></button></div><div className="mode-tabs"><button type="button" className={!groupMode ? 'chosen' : ''} onClick={() => {setGroupMode(false);setNotice('')}}>خصوصی</button><button type="button" className={groupMode ? 'chosen' : ''} onClick={() => {setGroupMode(true);setNotice('')}}>گروهی</button></div>{groupMode ? <><label>نام گروه<input autoFocus value={groupTitle} onChange={e => setGroupTitle(e.target.value)} placeholder="دوستان" /></label><label>نام کاربری اعضا با کاما جدا شود<input value={groupUsers} onChange={e => setGroupUsers(e.target.value)} placeholder="ali, sara" /></label></> : <><p className="muted">نام کاربری شخص موردنظر را وارد کن.</p><label>نام کاربری<input autoFocus value={newUsername} onChange={e => setNewUsername(e.target.value)} placeholder="username" /></label></>}{notice && <p className="error">{notice}</p>}<button className="primary full" disabled={busy || (groupMode ? !groupTitle.trim() || !groupUsers.trim() : !newUsername.trim())}>{busy ? 'در حال ساخت…' : groupMode ? 'ساخت گروه' : 'شروع گفتگو'}</button></form></div>}
   </main>
 }
