@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createClient, type User } from '@supabase/supabase-js'
 import { MessageCircle, Search, Plus, Send, Paperclip, Image as ImageIcon, LogOut, Users, ArrowRight, X, CheckCheck } from 'lucide-react'
+import Extras from './Extras'
 
 const SUPABASE_URL = 'https://gegkwtxpygtfzyhnnrgv.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_fyidvtGSXVDcZS5U5BQbSg_t_8FYYNO'
@@ -199,7 +200,7 @@ export default function App() {
     <aside className={'sidebar ' + (selected ? 'mobile-hidden' : '')}>
       <header className="side-header"><div className="brand"><span className="brand-mark small"><MessageCircle size={20}/></span><b>Kimi</b></div><button className="icon-button" title="گفت‌وگوی جدید" onClick={() => setShowNew(true)}><Plus/></button></header>
       <div className="profile-strip"><div className="avatar">{(profile?.display_name || user.email || 'K')[0].toUpperCase()}</div><div className="profile-info"><b>{profile?.display_name || 'کاربر Kimi'}</b><span>@{profile?.username || '...'}</span></div><button className="icon-button subtle" title="خروج" onClick={logout}><LogOut size={18}/></button></div>
-      <div className="search-box"><Search size={18}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="جست‌وجوی گفتگوها" /></div>
+      <div className="search-box"><Search size={18}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="جست‌وجوی گفتگوها" /></div>\n      <Extras userId={user.id} onStartChat={(name) => { setNewUsername(name); setGroupMode(false); setShowNew(true) }} />
       <div className="list-heading">پیام‌ها <span>{conversations.length}</span></div>
       <div className="conversation-list">{filtered.map(c => <button key={c.id} className={'conversation ' + (selected?.id === c.id ? 'active' : '')} onClick={() => setSelected(c)}><div className="avatar chat-avatar">{c.is_group ? <Users size={19}/> : (c.title || 'K')[0]}</div><div className="conversation-meta"><b>{c.title || 'گفت‌وگوی خصوصی'}</b><span>{c.is_group ? 'گروه' : 'گفت‌وگوی خصوصی'}</span></div></button>)}{!filtered.length && <div className="empty-list">هنوز گفت‌وگویی نداری.<br/>برای شروع روی + بزن.</div>}</div>
     </aside>
