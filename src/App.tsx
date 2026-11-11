@@ -26,6 +26,9 @@ export default function App() {
   const [draft, setDraft] = useState('')
   const [search, setSearch] = useState('')
   const [newUsername, setNewUsername] = useState('')
+  const [groupMode, setGroupMode] = useState(false)
+  const [groupTitle, setGroupTitle] = useState('')
+  const [groupUsers, setGroupUsers] = useState('')
   const [showNew, setShowNew] = useState(false)
   const [notice, setNotice] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -122,6 +125,26 @@ export default function App() {
     finally { setBusy(false) }
   }
 
+  async function createGroup(e: React.FormEvent) {
+    e.preventDefault(); if (!user || !groupTitle.trim()) return
+    const names = [...new Set(groupUsers.split(',').map(x => x.trim()).filter(Boolean))]
+    if (!names.length) { setNotice('حداقل یک عضو وارد کن.'); return }
+    setBusy(true); setNotice('')
+    try {
+      const { data: people, error: findError } = await supabase.from('profiles').select('id, username').in('username', names)
+      if (findError) throw findError
+      const found = people || []
+      const missing = names.filter(n => !found.some(p => p.username === n))
+      if (missing.length) throw new Error('نام کاربری پیدا نشد: ' + missing.join(', '))
+      const { data: conv, error } = await supabase.from('conversations').insert({ created_by: user.id, is_group: true, title: groupTitle.trim() }).select().single()
+      if (error || !conv) throw error || new Error('ساخت گروه ناموفق بود.')
+      const ids = [...new Set([user.id, ...found.map(p => p.id)])]
+      const { error: memberError } = await supabase.from('conversation_members').insert(ids.map(user_id => ({ conversation_id: conv.id, user_id })))
+      if (memberError) throw memberError
+      setSelected(conv); setShowNew(false); setGroupTitle(''); setGroupUsers(''); await loadConversations()
+    } catch (err) { setNotice(err instanceof Error ? err.message : 'خطا در ساخت گروه') }
+    finally { setBusy(false) }
+  }
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault(); if (!user || !selected || !draft.trim()) return
     const body = draft.trim(); setDraft('')
@@ -169,7 +192,7 @@ export default function App() {
         <form className="composer" onSubmit={sendMessage}><label className="attach-button" title="ارسال فایل"><Paperclip size={20}/><input type="file" hidden onChange={e => uploadFile(e.target.files?.[0])}/></label><label className="attach-button image-attach" title="ارسال تصویر"><ImageIcon size={20}/><input type="file" accept="image/*" hidden onChange={e => uploadFile(e.target.files?.[0])}/></label><input value={draft} onChange={e => setDraft(e.target.value)} placeholder="پیامت را بنویس…" /><button className="send-button" disabled={!draft.trim()}><Send size={19}/></button></form>
       </> : <div className="welcome-screen"><div className="welcome-art"><MessageCircle size={52}/></div><h2>به Kimi خوش آمدی</h2><p>یک گفت‌وگو انتخاب کن یا پیام جدیدی شروع کن.</p><button className="primary" onClick={() => setShowNew(true)}><Plus size={18}/> شروع گفت‌وگوی جدید</button></div>}
     </section>
-    {showNew && <div className="modal-backdrop" onClick={() => setShowNew(false)}><form className="modal" onSubmit={createDirect} onClick={e => e.stopPropagation()}><div className="modal-head"><b>گفت‌وگوی جدید</b><button type="button" className="icon-button" onClick={() => setShowNew(false)}><X/></button></div><p className="muted">نام کاربری شخص موردنظر را وارد کن.</p><label>نام کاربری<input autoFocus value={newUsername} onChange={e => setNewUsername(e.target.value)} placeholder="username" /></label>{notice && <p className="error">{notice}</p>}<button className="primary full" disabled={busy || !newUsername.trim()}>{busy ? 'در حال ساخت…' : 'شروع گفتگو'}</button></form></div>}
+    {showNew && <div className="modal-backdrop" onClick={() => setShowNew(false)}><form className="modal" onSubmit={groupMode ? createGroup : createDirect} onClick={e => e.stopPropagation()}><div className="modal-head"><b>گفت‌وگوی جدید</b><button type="button" className="icon-button" onClick={() => setShowNew(false)}><X/></button></div><div className="mode-tabs"><button type="button" className={!groupMode ? 'chosen' : ''} onClick={() => {setGroupMode(false);setNotice('')}}>خصوصی</button><button type="button" className={groupMode ? 'chosen' : ''} onClick={() => {setGroupMode(true);setNotice('')}}>گروهی</button></div>{groupMode ? <><label>نام گروه<input autoFocus value={groupTitle} onChange={e => setGroupTitle(e.target.value)} placeholder="دوستان" /></label><label>نام کاربری اعضا با کاما جدا شود<input value={groupUsers} onChange={e => setGroupUsers(e.target.value)} placeholder="ali, sara" /></label></> : <><p className="muted">نام کاربری شخص موردنظر را وارد کن.</p><label>نام کاربری<input autoFocus value={newUsername} onChange={e => setNewUsername(e.target.value)} placeholder="username" /></label></>}{notice && <p className="error">{notice}</p>}<button className="primary full" disabled={busy || (groupMode ? !groupTitle.trim() || !groupUsers.trim() : !newUsername.trim())}>{busy ? 'در حال ساخت…' : groupMode ? 'ساخت گروه' : 'شروع گفتگو'}</button></form></div>}
   </main>
 }
 
