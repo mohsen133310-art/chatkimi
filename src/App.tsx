@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createClient, type User } from '@supabase/supabase-js'
-import { MessageCircle, Search, Plus, Send, Paperclip, Image as ImageIcon, LogOut, Users, ArrowRight, X, Check, CheckCheck } from 'lucide-react'
+import { MessageCircle, Search, Plus, Send, Paperclip, Image as ImageIcon, LogOut, Users, ArrowRight, X, CheckCheck } from 'lucide-react'
 
 const SUPABASE_URL = 'https://gegkwtxpygtfzyhnnrgv.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_fyidvtGSXVDcZS5U5BQbSg_t_8FYYNO'
@@ -81,7 +81,7 @@ export default function App() {
     setMessages(data || [])
   }
 
-  async function authenticate(e: React.FormEvent) {
+  async function authenticate(e: FormEvent) {
     e.preventDefault(); setBusy(true); setAuthError('')
     try {
       if (authMode === 'signup') {
@@ -100,7 +100,7 @@ export default function App() {
     finally { setBusy(false) }
   }
 
-  async function createDirect(e: React.FormEvent) {
+  async function createDirect(e: FormEvent) {
     e.preventDefault(); if (!user || !newUsername.trim()) return
     setBusy(true); setNotice('')
     try {
@@ -125,7 +125,7 @@ export default function App() {
     finally { setBusy(false) }
   }
 
-  async function createGroup(e: React.FormEvent) {
+  async function createGroup(e: FormEvent) {
     e.preventDefault(); if (!user || !groupTitle.trim()) return
     const names = [...new Set(groupUsers.split(',').map(x => x.trim()).filter(Boolean))]
     if (!names.length) { setNotice('حداقل یک عضو وارد کن.'); return }
@@ -145,7 +145,7 @@ export default function App() {
     } catch (err) { setNotice(err instanceof Error ? err.message : 'خطا در ساخت گروه') }
     finally { setBusy(false) }
   }
-  async function sendMessage(e: React.FormEvent) {
+  async function sendMessage(e: FormEvent) {
     e.preventDefault(); if (!user || !selected || !draft.trim()) return
     const body = draft.trim(); setDraft('')
     const { error } = await supabase.from('messages').insert({ conversation_id: selected.id, sender_id: user.id, body })
