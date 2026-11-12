@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createClient, type User } from '@supabase/supabase-js'
-import { MessageCircle, Search, Plus, Send, Paperclip, Image as ImageIcon, LogOut, Users, ArrowRight, X, CheckCheck, Settings } from 'lucide-react'
+import { MessageCircle, Search, Plus, Send, Paperclip, Image as ImageIcon, LogOut, Users, ArrowRight, X, CheckCheck, Settings, Shield, Lock, LockKeyhole } from 'lucide-react'
 import Extras from './Extras'
 
 const SUPABASE_URL = 'https://gegkwtxpygtfzyhnnrgv.supabase.co'
@@ -33,6 +33,17 @@ export default function App() {
   const [groupUsers, setGroupUsers] = useState('')
   const [showNew, setShowNew] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [pinConfigured, setPinConfigured] = useState(false)
+  const [appLockEnabled, setAppLockEnabled] = useState(false)
+  const [appLocked, setAppLocked] = useState(false)
+  const [pinEntry, setPinEntry] = useState('')
+  const [pinError, setPinError] = useState('')
+  const [pinFirst, setPinFirst] = useState('')
+  const [pinConfirm, setPinConfirm] = useState('')
+  const [lockedChats, setLockedChats] = useState<string[]>([])
+  const [pendingChat, setPendingChat] = useState<Conversation | null>(null)
+  const [chatPinEntry, setChatPinEntry] = useState('')
+  const [securityNotice, setSecurityNotice] = useState('')
   const [notice, setNotice] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const filtered = useMemo(() => conversations.filter(c => (c.title || 'گفت‌وگوی خصوصی').toLowerCase().includes(search.toLowerCase())), [conversations, search])
@@ -61,10 +72,14 @@ export default function App() {
   }, [user?.id])
 
   useEffect(() => {
-    if (!user) { setProfile(null); setConversations([]); setSelected(null); return }
-    loadProfile()
-    loadConversations()
-  }, [user])
+    if (!user) { setProfile(null); setConversations([]); setSelected(null); setPinConfigured(false); setAppLocked(false); setLockedChats([]); return }
+    const pin = localStorage.getItem('kimi_pin_' + user.id)
+    const enabled = localStorage.getItem('kimi_app_lock_' + user.id) === 'true'
+    let savedChats: string[] = []
+    try { savedChats = JSON.parse(localStorage.getItem('kimi_locked_chats_' + user.id) || '[]') } catch { savedChats = [] }
+    setPinConfigured(!!pin); setAppLockEnabled(enabled); setAppLocked(!!pin && enabled); setLockedChats(savedChats)
+    loadProfile(); loadConversations()
+  }, [user?.id])
 
   useEffect(() => {
     if (!selected || !user) { setMessages([]); return }
@@ -125,6 +140,32 @@ export default function App() {
         : 'لینک ورود به ایمیلت فرستاده شد. صندوق ورودی و پوشه هرزنامه را بررسی کن.')
     } catch (err) { setAuthError(err instanceof Error ? err.message : 'ارسال لینک ایمیل ناموفق بود.') }
     finally { setBusy(false) }
+  }
+
+  async function hashPin(pin: string, salt: string) {
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits'])
+    const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: new TextEncoder().encode(salt), iterations: 150000, hash: 'SHA-256' }, key, 256)
+    return Array.from(new Uint8Array(bits)).map(x => x.toString(16).padStart(2, '0')).join('')
+  }
+  async function verifyPin(pin: string) {
+    if (!user || !/^\d{4,8}$/.test(pin)) return false
+    const [salt, expected] = (localStorage.getItem('kimi_pin_' + user.id) || '').split(':')
+    return !!salt && !!expected && (await hashPin(pin, salt)) === expected
+  }
+  async function savePin() {
+    if (!user) return
+    if (!/^\d{4,8}$/.test(pinFirst)) { setPinError('رمز باید ۴ تا ۸ رقم باشد.'); return }
+    if (pinFirst !== pinConfirm) { setPinError('دو رمز واردشده یکسان نیستند.'); return }
+    const salt = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(x => x.toString(16).padStart(2, '0')).join('')
+    localStorage.setItem('kimi_pin_' + user.id, salt + ':' + await hashPin(pinFirst, salt))
+    localStorage.setItem('kimi_app_lock_' + user.id, 'true')
+    setPinConfigured(true); setAppLockEnabled(true); setPinFirst(''); setPinConfirm(''); setPinError(''); setSecurityNotice('رمز امنیتی تنظیم شد.')
+  }
+  async function unlockApp() { if (await verifyPin(pinEntry)) { setAppLocked(false); setPinEntry(''); setPinError('') } else setPinError('رمز واردشده درست نیست.') }
+  async function unlockChat() { if (await verifyPin(chatPinEntry) && pendingChat) { setSelected(pendingChat); setPendingChat(null); setChatPinEntry(''); setPinError('') } else setPinError('رمز واردشده درست نیست.') }
+  function toggleChatLock(id: string, locked: boolean) {
+    const next = locked ? [...new Set([...lockedChats, id])] : lockedChats.filter(x => x !== id)
+    setLockedChats(next); if (user) localStorage.setItem('kimi_locked_chats_' + user.id, JSON.stringify(next))
   }
 
   async function toggleEmailVisibility(visible: boolean) {
@@ -204,6 +245,8 @@ export default function App() {
 
   async function logout() { await supabase.auth.signOut() }
 
+  if (user && appLocked && appLockEnabled) return <main className="auth-page"><section className="auth-card security-card"><div className="brand-mark"><LockKeyhole size={28}/></div><h1>Kimi قفل است</h1><p className="muted">برای ورود، رمز عددی خودت را وارد کن.</p><form onSubmit={e => { e.preventDefault(); void unlockApp() }}><label>رمز برنامه<input type="password" inputMode="numeric" autoComplete="current-password" maxLength={8} value={pinEntry} onChange={e => setPinEntry(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="رمز ۴ تا ۸ رقمی" required /></label>{pinError && <p className="error">{pinError}</p>}<button className="primary full" disabled={pinEntry.length < 4}>باز کردن قفل</button><button type="button" className="link-button" onClick={() => void logout()}>خروج از حساب</button></form></section></main>
+
   if (!user) return <main className="auth-page"><section className="auth-card"><div className="brand-mark"><MessageCircle size={30} /></div><h1>Kimi</h1><p className="muted">پیام‌هایت، نزدیک‌تر از همیشه</p>
     <div className="mode-tabs"><button type="button" className={authMode === "login" ? "chosen" : ""} onClick={() => { setAuthMode("login"); setLinkSent(false); setAuthError("") }}>ورود</button><button type="button" className={authMode === "signup" ? "chosen" : ""} onClick={() => { setAuthMode("signup"); setLinkSent(false); setAuthError("") }}>ثبت‌نام</button></div>
     <form onSubmit={authenticate}>
@@ -224,7 +267,7 @@ export default function App() {
       <div className="profile-strip"><div className="avatar">{(profile?.display_name || user.email || 'K')[0].toUpperCase()}</div><div className="profile-info"><b>{profile?.display_name || 'کاربر Kimi'}</b><span>@{profile?.username || '...'}</span></div><button className="icon-button subtle" title="تنظیمات حریم خصوصی" onClick={() => setShowSettings(true)}><Settings size={18}/></button><button className="icon-button subtle" title="خروج" onClick={logout}><LogOut size={18}/></button></div>
       <div className="search-box"><Search size={18}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="جست‌وجوی گفتگوها" /></div>\n      <Extras userId={user.id} onStartChat={(name) => { setNewUsername(name); setGroupMode(false); setShowNew(true) }} />
       <div className="list-heading">پیام‌ها <span>{conversations.length}</span></div>
-      <div className="conversation-list">{filtered.map(c => <button key={c.id} className={'conversation ' + (selected?.id === c.id ? 'active' : '')} onClick={() => setSelected(c)}><div className="avatar chat-avatar">{c.is_group ? <Users size={19}/> : (c.title || 'K')[0]}</div><div className="conversation-meta"><b>{c.title || 'گفت‌وگوی خصوصی'}</b><span>{c.is_group ? 'گروه' : 'گفت‌وگوی خصوصی'}</span></div></button>)}{!filtered.length && <div className="empty-list">هنوز گفت‌وگویی نداری.<br/>برای شروع روی + بزن.</div>}</div>
+      <div className="conversation-list">{filtered.map(c => <button key={c.id} className={'conversation ' + (selected?.id === c.id ? 'active' : '')} onClick={() => { if (lockedChats.includes(c.id)) { setPendingChat(c); setChatPinEntry(''); setPinError('') } else setSelected(c) }}><div className="avatar chat-avatar">{c.is_group ? <Users size={19}/> : (c.title || 'K')[0]}</div><div className="conversation-meta"><b>{c.title || 'گفت‌وگوی خصوصی'}</b><span>{lockedChats.includes(c.id) ? '🔒 چت قفل‌شده' : c.is_group ? 'گروه' : 'گفت‌وگوی خصوصی'}</span></div></button>)}{!filtered.length && <div className="empty-list">هنوز گفت‌وگویی نداری.<br/>برای شروع روی + بزن.</div>}</div>
     </aside>
     <section className={'chat-panel ' + (!selected ? 'mobile-hidden' : '')}>
       {selected ? <>
@@ -233,7 +276,8 @@ export default function App() {
         <form className="composer" onSubmit={sendMessage}><label className="attach-button" title="ارسال فایل"><Paperclip size={20}/><input type="file" hidden onChange={e => uploadFile(e.target.files?.[0])}/></label><label className="attach-button image-attach" title="ارسال تصویر"><ImageIcon size={20}/><input type="file" accept="image/*" hidden onChange={e => uploadFile(e.target.files?.[0])}/></label><input value={draft} onChange={e => setDraft(e.target.value)} placeholder="پیامت را بنویس…" /><button className="send-button" disabled={!draft.trim()}><Send size={19}/></button></form>
       </> : <div className="welcome-screen"><div className="welcome-art"><MessageCircle size={52}/></div><h2>به Kimi خوش آمدی</h2><p>یک گفت‌وگو انتخاب کن یا پیام جدیدی شروع کن.</p><button className="primary" onClick={() => setShowNew(true)}><Plus size={18}/> شروع گفت‌وگوی جدید</button></div>}
     </section>
-    {showSettings && <div className="modal-backdrop" onClick={() => setShowSettings(false)}><section className="modal" onClick={e => e.stopPropagation()}><div className="modal-head"><b>تنظیمات حریم خصوصی</b><button type="button" className="icon-button" onClick={() => setShowSettings(false)}><X/></button></div><label className="privacy-toggle"><input type="checkbox" checked={!!profile?.email_visible} onChange={e => void toggleEmailVisibility(e.target.checked)} /> نمایش ایمیل برای دیگر کاربران</label><p className="muted">ایمیل به‌صورت پیش‌فرض خصوصی است. فقط با روشن‌کردن این گزینه اجازه نمایش آن را می‌دهی.</p></section></div>}
+    {showSettings && <div className="modal-backdrop" onClick={() => setShowSettings(false)}><section className="modal settings-modal" onClick={e => e.stopPropagation()}><div className="modal-head"><b>امنیت و حریم خصوصی</b><button type="button" className="icon-button" onClick={() => setShowSettings(false)}><X/></button></div><div className="settings-section"><h3><Shield size={17}/> امنیت برنامه</h3>{!pinConfigured ? <form onSubmit={e => { e.preventDefault(); void savePin() }} className="security-form"><p className="muted">رمز عددی ۴ تا ۸ رقمی بساز. اثر انگشت استفاده نمی‌شود.</p><label>رمز جدید<input type="password" inputMode="numeric" maxLength={8} value={pinFirst} onChange={e => setPinFirst(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="۴ تا ۸ رقم" required /></label><label>تکرار رمز<input type="password" inputMode="numeric" maxLength={8} value={pinConfirm} onChange={e => setPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="تکرار رمز" required /></label>{pinError && <p className="error">{pinError}</p>}<button className="primary full">ساخت رمز امنیتی</button></form> : <><label className="settings-toggle"><span>قفل‌کردن برنامه هنگام بازکردن دوباره</span><input type="checkbox" checked={appLockEnabled} onChange={e => { const v=e.target.checked; setAppLockEnabled(v); if(user) localStorage.setItem('kimi_app_lock_'+user.id,String(v)); if(!v) setAppLocked(false) }}/></label><div className="settings-actions"><button className="secondary" onClick={() => { setPinFirst(''); setPinConfirm(''); setPinError(''); setPinConfigured(false); setSecurityNotice('رمز قبلی تا ثبت رمز جدید معتبر می‌ماند.') }}>تغییر رمز</button><button className="secondary" onClick={() => { setShowSettings(false); setAppLocked(true) }}><Lock size={15}/> قفل‌کردن همین حالا</button></div></>}</div><div className="settings-section"><h3><LockKeyhole size={17}/> قفل گفتگوها</h3><p className="muted">گفتگوهای انتخابی با همان رمز عددی محافظت می‌شوند.</p>{!pinConfigured ? <p className="settings-hint">ابتدا رمز امنیتی بساز.</p> : conversations.map(c => <label className="settings-toggle chat-lock-row" key={c.id}><span>{c.title || 'گفت‌وگوی خصوصی'}</span><input type="checkbox" checked={lockedChats.includes(c.id)} onChange={e => toggleChatLock(c.id,e.target.checked)}/></label>)}</div><div className="settings-section"><h3>حریم خصوصی</h3><label className="settings-toggle"><span>نمایش ایمیل برای دیگر کاربران</span><input type="checkbox" checked={!!profile?.email_visible} onChange={e => void toggleEmailVisibility(e.target.checked)} /></label><p className="muted">ایمیل به‌صورت پیش‌فرض خصوصی است.</p></div>{securityNotice && <p className="success-note">{securityNotice}</p>}</section></div>}
+    {pendingChat && <div className="modal-backdrop lock-overlay"><form className="modal" onSubmit={e => { e.preventDefault(); void unlockChat() }}><div className="brand-mark"><LockKeyhole size={24}/></div><h3>این گفتگو قفل است</h3><p className="muted">برای بازکردن، رمز امنیتی Kimi را وارد کن.</p><label>رمز عددی<input type="password" inputMode="numeric" maxLength={8} autoFocus value={chatPinEntry} onChange={e => setChatPinEntry(e.target.value.replace(/\D/g, '').slice(0, 8))} required /></label>{pinError && <p className="error">{pinError}</p>}<button className="primary full" disabled={chatPinEntry.length < 4}>بازکردن گفتگو</button><button type="button" className="link-button" onClick={() => setPendingChat(null)}>انصراف</button></form></div>}
     {showNew && <div className="modal-backdrop" onClick={() => setShowNew(false)}><form className="modal" onSubmit={groupMode ? createGroup : createDirect} onClick={e => e.stopPropagation()}><div className="modal-head"><b>گفت‌وگوی جدید</b><button type="button" className="icon-button" onClick={() => setShowNew(false)}><X/></button></div><div className="mode-tabs"><button type="button" className={!groupMode ? 'chosen' : ''} onClick={() => {setGroupMode(false);setNotice('')}}>خصوصی</button><button type="button" className={groupMode ? 'chosen' : ''} onClick={() => {setGroupMode(true);setNotice('')}}>گروهی</button></div>{groupMode ? <><label>نام گروه<input autoFocus value={groupTitle} onChange={e => setGroupTitle(e.target.value)} placeholder="دوستان" /></label><label>نام کاربری اعضا با کاما جدا شود<input value={groupUsers} onChange={e => setGroupUsers(e.target.value)} placeholder="@ali, @sara" /></label></> : <><p className="muted">نام کاربری شخص موردنظر را وارد کن.</p><label>نام کاربری<input autoFocus value={newUsername} onChange={e => setNewUsername(e.target.value)} placeholder="@username" /></label></>}{notice && <p className="error">{notice}</p>}<button className="primary full" disabled={busy || (groupMode ? !groupTitle.trim() || !groupUsers.trim() : !newUsername.trim())}>{busy ? 'در حال ساخت…' : groupMode ? 'ساخت گروه' : 'شروع گفتگو'}</button></form></div>}
   </main>
 }
