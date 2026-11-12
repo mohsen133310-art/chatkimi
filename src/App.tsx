@@ -166,6 +166,7 @@ export default function App() {
   function toggleChatLock(id: string, locked: boolean) {
     const next = locked ? [...new Set([...lockedChats, id])] : lockedChats.filter(x => x !== id)
     setLockedChats(next); if (user) localStorage.setItem('kimi_locked_chats_' + user.id, JSON.stringify(next))
+    if (locked && selected?.id === id) { setSelected(null); setMessages([]) }
   }
 
   async function toggleEmailVisibility(visible: boolean) {
