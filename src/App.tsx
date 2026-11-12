@@ -15,9 +15,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login')
-  const [phone, setPhone] = useState('')
-  const [otp, setOtp] = useState('')
-  const [otpSent, setOtpSent] = useState(false)
+  const [linkSent, setLinkSent] = useState(false)
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -111,43 +109,21 @@ export default function App() {
     e.preventDefault(); setBusy(true); setAuthError('')
     try {
       const cleanEmail = email.trim().toLowerCase()
-      const cleanPhone = phone.trim()
       if (authMode === 'signup') {
         if (!username.trim().startsWith('@')) throw new Error('نام کاربری باید با @ شروع شود؛ مثل @kkkkk.')
         const clean = cleanUsername(username)
         if (!/^[a-z0-9_]{3,24}$/.test(clean)) throw new Error('نام کاربری باید با @ شروع شود و ۳ تا ۲۴ حرف انگلیسی کوچک، عدد یا _ داشته باشد؛ مثل @kkkkk.')
-        if (!/^\+?[0-9]{8,15}$/.test(cleanPhone.replace(/[\s()-]/g, ''))) throw new Error('شماره موبایل را با کد کشور وارد کن.')
-        const { error } = await supabase.auth.signInWithOtp({
-          email: cleanEmail,
-          options: { shouldCreateUser: true, data: { username: clean, display_name: displayName.trim() || clean, phone: cleanPhone } }
-        })
-        if (error) throw error
-        setUsername(clean)
-        setOtpSent(true)
-        setAuthError('کد ۶ رقمی به ایمیلت فرستاده شد. صندوق ورودی و پوشه هرزنامه را بررسی کن.')
-      } else {
-        const { error } = await supabase.auth.signInWithOtp({ email: cleanEmail, options: { shouldCreateUser: false } })
-        if (error) throw error
-        setOtpSent(true)
-        setAuthError('کد ورود ۶ رقمی به ایمیلت فرستاده شد.')
       }
-    } catch (err) { setAuthError(err instanceof Error ? err.message : 'ارسال کد ایمیل ناموفق بود.') }
-    finally { setBusy(false) }
-  }
-
-  async function verifyEmailOtp(e: FormEvent) {
-    e.preventDefault(); setBusy(true); setAuthError('')
-    try {
-      const { data, error } = await supabase.auth.verifyOtp({ email: email.trim().toLowerCase(), token: otp.trim(), type: 'email' })
+      const options = authMode === 'signup'
+        ? { shouldCreateUser: true, emailRedirectTo: `${window.location.origin}/chatkimi/`, data: { username: cleanUsername(username), display_name: displayName.trim() || cleanUsername(username) } }
+        : { shouldCreateUser: false, emailRedirectTo: `${window.location.origin}/chatkimi/` }
+      const { error } = await supabase.auth.signInWithOtp({ email: cleanEmail, options })
       if (error) throw error
-      if (data.user && authMode === 'signup') {
-        const clean = cleanUsername(username)
-        const { error: profileError } = await supabase.from('profiles').upsert({
-          id: data.user.id, username: clean, display_name: displayName.trim() || clean, email_visible: false
-        }, { onConflict: 'id' })
-        if (profileError) throw profileError
-      }
-    } catch (err) { setAuthError(err instanceof Error ? err.message : 'کد تأیید نامعتبر است.') }
+      setLinkSent(true)
+      setAuthError(authMode === 'signup'
+        ? 'لینک ثبت‌نام به ایمیلت فرستاده شد. صندوق ورودی و پوشه هرزنامه را بررسی کن.'
+        : 'لینک ورود به ایمیلت فرستاده شد. صندوق ورودی و پوشه هرزنامه را بررسی کن.')
+    } catch (err) { setAuthError(err instanceof Error ? err.message : 'ارسال لینک ایمیل ناموفق بود.') }
     finally { setBusy(false) }
   }
 
@@ -229,20 +205,18 @@ export default function App() {
   async function logout() { await supabase.auth.signOut() }
 
   if (!user) return <main className="auth-page"><section className="auth-card"><div className="brand-mark"><MessageCircle size={30} /></div><h1>Kimi</h1><p className="muted">پیام‌هایت، نزدیک‌تر از همیشه</p>
-    <div className="mode-tabs"><button type="button" className={authMode === "login" ? "chosen" : ""} onClick={() => { setAuthMode("login"); setOtpSent(false); setOtp(""); setAuthError("") }}>ورود</button><button type="button" className={authMode === "signup" ? "chosen" : ""} onClick={() => { setAuthMode("signup"); setOtpSent(false); setOtp(""); setAuthError("") }}>ثبت‌نام</button></div>
-    <form onSubmit={otpSent ? verifyEmailOtp : authenticate}>
+    <div className="mode-tabs"><button type="button" className={authMode === "login" ? "chosen" : ""} onClick={() => { setAuthMode("login"); setOtpSent(false); setAuthError("") }}>ورود</button><button type="button" className={authMode === "signup" ? "chosen" : ""} onClick={() => { setAuthMode("signup"); setOtpSent(false); setAuthError("") }}>ثبت‌نام</button></div>
+    <form onSubmit={authenticate}>
       {authMode === "signup" && <>
         <label>نام نمایشی<input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="مثلاً محسن" /></label>
-        <label>نام کاربری<input value={username} onChange={e => setUsername(e.target.value)} placeholder="@kkkkk" required disabled={otpSent} /></label>
-        <label>شماره موبایل<input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+989121234567" required disabled={otpSent} /></label>
+        <label>نام کاربری<input value={username} onChange={e => setUsername(e.target.value)} placeholder="@kkkkk" required disabled={linkSent} /></label>
       </>}
-      <label>ایمیل<input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="name@example.com" required disabled={otpSent} /></label>
-      {otpSent && <label>کد تأیید ایمیل<input inputMode="numeric" autoComplete="one-time-code" value={otp} onChange={e => setOtp(e.target.value)} placeholder="کد ۶ رقمی" minLength={6} maxLength={6} required /></label>}
+      <label>ایمیل<input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="name@example.com" required disabled={linkSent} /></label>
       {authError && <p className="error">{authError}</p>}
-      <button className="primary full" disabled={busy || (otpSent && otp.trim().length !== 6)}>{busy ? "لطفاً صبر کن…" : otpSent ? "تأیید کد و ورود" : authMode === "login" ? "ارسال کد ورود به ایمیل" : "ارسال کد ثبت‌نام"}</button>
-      {otpSent && <button type="button" className="link-button" onClick={() => { setOtpSent(false); setOtp(""); setAuthError("") }}>بازگشت و تغییر اطلاعات</button>}
+      <button className="primary full" disabled={busy || linkSent}>{busy ? "لطفاً صبر کن…" : linkSent ? "لینک ارسال شد" : authMode === "login" ? "ارسال لینک ورود" : "ارسال لینک ثبت‌نام"}</button>
+      {linkSent && <button type="button" className="link-button" onClick={() => { setOtpSent(false); setAuthError("") }}>تغییر ایمیل / ارسال دوباره</button>}
     </form>
-    <p className="tiny">ورود با ایمیل برای کاربران قبلی هم در دسترس است.</p></section></main>
+    <p className="tiny">با کلیک روی لینک داخل ایمیل، وارد Kimi می‌شوی.</p></section></main>
 
   return <main className="app-shell">
     <aside className={'sidebar ' + (selected ? 'mobile-hidden' : '')}>
