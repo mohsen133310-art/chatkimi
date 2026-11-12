@@ -205,7 +205,7 @@ export default function App() {
   async function logout() { await supabase.auth.signOut() }
 
   if (!user) return <main className="auth-page"><section className="auth-card"><div className="brand-mark"><MessageCircle size={30} /></div><h1>Kimi</h1><p className="muted">پیام‌هایت، نزدیک‌تر از همیشه</p>
-    <div className="mode-tabs"><button type="button" className={authMode === "login" ? "chosen" : ""} onClick={() => { setAuthMode("login"); setOtpSent(false); setAuthError("") }}>ورود</button><button type="button" className={authMode === "signup" ? "chosen" : ""} onClick={() => { setAuthMode("signup"); setOtpSent(false); setAuthError("") }}>ثبت‌نام</button></div>
+    <div className="mode-tabs"><button type="button" className={authMode === "login" ? "chosen" : ""} onClick={() => { setAuthMode("login"); setLinkSent(false); setAuthError("") }}>ورود</button><button type="button" className={authMode === "signup" ? "chosen" : ""} onClick={() => { setAuthMode("signup"); setLinkSent(false); setAuthError("") }}>ثبت‌نام</button></div>
     <form onSubmit={authenticate}>
       {authMode === "signup" && <>
         <label>نام نمایشی<input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="مثلاً محسن" /></label>
@@ -214,7 +214,7 @@ export default function App() {
       <label>ایمیل<input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="name@example.com" required disabled={linkSent} /></label>
       {authError && <p className="error">{authError}</p>}
       <button className="primary full" disabled={busy || linkSent}>{busy ? "لطفاً صبر کن…" : linkSent ? "لینک ارسال شد" : authMode === "login" ? "ارسال لینک ورود" : "ارسال لینک ثبت‌نام"}</button>
-      {linkSent && <button type="button" className="link-button" onClick={() => { setOtpSent(false); setAuthError("") }}>تغییر ایمیل / ارسال دوباره</button>}
+      {linkSent && <button type="button" className="link-button" onClick={() => { setLinkSent(false); setAuthError("") }}>تغییر ایمیل / ارسال دوباره</button>}
     </form>
     <p className="tiny">با کلیک روی لینک داخل ایمیل، وارد Kimi می‌شوی.</p></section></main>
 
