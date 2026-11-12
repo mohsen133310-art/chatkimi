@@ -130,8 +130,8 @@ export default function App() {
         if (!/^[a-z0-9_]{3,24}$/.test(clean)) throw new Error('نام کاربری باید با @ شروع شود و ۳ تا ۲۴ حرف انگلیسی کوچک، عدد یا _ داشته باشد؛ مثل @kkkkk.')
       }
       const options = authMode === 'signup'
-        ? { shouldCreateUser: true, emailRedirectTo: `${window.location.origin}/chatkimi/`, data: { username: cleanUsername(username), display_name: displayName.trim() || cleanUsername(username) } }
-        : { shouldCreateUser: false, emailRedirectTo: `${window.location.origin}/chatkimi/` }
+        ? { shouldCreateUser: true, emailRedirectTo: 'https://mohsen133310-art.github.io/chatkimi/', data: { username: cleanUsername(username), display_name: displayName.trim() || cleanUsername(username) } }
+        : { shouldCreateUser: false, emailRedirectTo: 'https://mohsen133310-art.github.io/chatkimi/' }
       const { error } = await supabase.auth.signInWithOtp({ email: cleanEmail, options })
       if (error) throw error
       setLinkSent(true)
